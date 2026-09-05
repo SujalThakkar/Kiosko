@@ -1,0 +1,119 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// NOTE: SQLite does not support Prisma enum blocks. Role and RequestStatus
+// are stored as plain TEXT strings and validated in application code.
+//
+// Role values:          "student" | "professor" | "lab_assistant"
+// RequestStatus values: "pending" | "approved" | "rejected" | "fulfilled" | "cancelled"
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Models (@@map / @map keep column & table names identical to the Python schema)
+// ---------------------------------------------------------------------------
+
+model Room {
+  id          Int                @id @default(autoincrement())
+  name        String
+  code        String             @unique
+  components  Component[]
+  assistants  User[]             @relation("UserRooms")
+  kioskEvents KioskEvent[]
+
+  @@map("rooms")
+}
+
+model User {
+  id           Int                @id @default(autoincrement())
+  name         String
+  somaiyaId    String             @unique @map("somaiya_id")
+  passwordHash String             @map("password_hash")
+  role         String             // "student" | "professor" | "lab_assistant"
+  department   String?
+  // Lab assistants only: rooms they administer (many-to-many)
+  rooms        Room[]             @relation("UserRooms")
+  requests     ComponentRequest[] @relation("StudentRequests")
+  decisions    ComponentRequest[] @relation("DeciderRequests")
+  issuances    Issuance[]
+  kioskEvents  KioskEvent[]
+
+  @@map("users")
+}
+
+model Component {
+  id           Int                @id @default(autoincrement())
+  name         String
+  category     String
+  roomId       Int                @map("room_id")
+  // available_qty: units on shelf, not reserved for any approved request
+  totalQty     Int                @map("total_qty")     @default(0)
+  availableQty Int                @map("available_qty") @default(0)
+  // reserved_qty: locked against an approved-but-not-yet-collected request
+  reservedQty  Int                @map("reserved_qty")  @default(0)
+  room         Room               @relation(fields: [roomId], references: [id])
+  requests     ComponentRequest[]
+  issuances    Issuance[]
+
+  @@map("components")
+}
+
+model ComponentRequest {
+  id           Int           @id @default(autoincrement())
+  studentId    Int           @map("student_id")
+  componentId  Int           @map("component_id")
+  qty          Int           @default(1)
+  purpose      String?
+  status       String        @default("pending") // "pending" | "approved" | "rejected" | "fulfilled" | "cancelled"
+  requestedAt  DateTime      @map("requested_at") @default(now())
+  decidedById  Int?          @map("decided_by_id")
+  decidedAt    DateTime?     @map("decided_at")
+  decisionNote String?       @map("decision_note")
+  fulfilledAt  DateTime?     @map("fulfilled_at")
+  student      User          @relation("StudentRequests",  fields: [studentId],   references: [id])
+  decidedBy    User?         @relation("DeciderRequests",  fields: [decidedById], references: [id])
+  component    Component     @relation(fields: [componentId], references: [id])
+  issuances    Issuance[]
+  kioskEvents  KioskEvent[]
+
+  @@map("component_requests")
+}
+
+model Issuance {
+  id          Int              @id @default(autoincrement())
+  requestId   Int              @map("request_id")
+  studentId   Int              @map("student_id")
+  componentId Int              @map("component_id")
+  qty         Int              @default(1)
+  issuedAt    DateTime         @map("issued_at")   @default(now())
+  dueAt       DateTime?        @map("due_at")
+  returnedAt  DateTime?        @map("returned_at")
+  request     ComponentRequest @relation(fields: [requestId],   references: [id])
+  student     User             @relation(fields: [studentId],   references: [id])
+  component   Component        @relation(fields: [componentId], references: [id])
+
+  @@map("issuances")
+}
+
+model KioskEvent {
+  id            Int               @id @default(autoincrement())
+  studentId     Int               @map("student_id")
+  roomId        Int               @map("room_id")
+  requestId     Int?              @map("request_id")
+  // JSON-encoded list of {label, confidence} from the CV scan
+  detectedItems String            @map("detected_items")
+  // "match" | "mismatch" | "no_approved_request"
+  matchStatus   String            @map("match_status")
+  createdAt     DateTime          @map("created_at") @default(now())
+  student       User              @relation(fields: [studentId],  references: [id])
+  room          Room              @relation(fields: [roomId],     references: [id])
+  request       ComponentRequest? @relation(fields: [requestId],  references: [id])
+
+  @@map("kiosk_events")
+}

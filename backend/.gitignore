@@ -1,0 +1,24 @@
+# Dependencies
+node_modules/
+
+# Build & Test
+dist/
+coverage/
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# SQLite Database - Track demo database, ignore temp journals
+*.db-journal
+*.sqlite-journal
+
+# Logs
+logs/
+*.log
+
+# Python (if applicable)
+venv/
+__pycache__/
+*.pyc
